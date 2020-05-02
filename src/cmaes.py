@@ -1,24 +1,5 @@
 import numpy as np 
 
-# This is going to be my test function
-class Rosenbrock:
-    def __init__(self, dim):
-        self.dimension = dim
-    
-    def objective(self,x):
-        f = 0.
-        for i in range(self.dimension-1):
-            f+=100*(x[i+1]-x[i]**2)**2+(1-x[i])**2            
-        return f
- 
-class Sphere:
-    def __init__(self, dim):
-        self.dimension = dim
-    
-    def objective(self,x):
-        return np.dot(x,x)
-
-
 class CMAParams:
     def __init__(self, N, popsize = None):
         '''
@@ -213,6 +194,7 @@ class CMAES:
 
 if __name__ == "__main__":
     # Test the code 
+    from test_functions import Rosenbrock
     import matplotlib.pyplot as plt
     dim = 4
     problem = Rosenbrock(4)
