@@ -43,6 +43,7 @@ class CMAES:
         self.B = np.identity(self.N)    # Rotation Matrix of C
         self.D = np.ones(self.N)        # Diagonal Eigenvalue of C
         self.C = np.identity(self.N)    # Covariance Matrix 
+        self.C_invsqrt = np.identity(self.N)    # Covariance Matrix 
 
         
         # Offspring inherit solutions as initial_guesses from previous iteration
@@ -62,7 +63,7 @@ class CMAES:
             self.maxfevals =  100 * pp + 150 * (self.N+3)**2*pp**0.5 
         
         # Change in Objective
-        self.tol = 1e-16
+        self.tol = 1e-18
         self.prev_best = np.inf # Best Fit
 
     def optimize(self):
@@ -75,26 +76,38 @@ class CMAES:
         """ 
         self.fs = []
         self.xs = []
+        print("Lambda = %d " %(self.params.lam))
+        header = "Iter  Fevals   BestObj    MaxStd   MinStd"
+        print(header)  
+        count = 0
         while self.fc < self.maxfevals:
-            arz = self.sample_solve()
+            ary = self.sample_solve()
             
             if abs(self.best_fitness - self.prev_best) < self.tol:
-                print("here")
+                e = self.xs[-1] - self.best_solution
+                if np.dot(e,e) < self.tol:
+                    print(self.best_fitness)
+                    print(self.best_solution)
+                    break
+                
             
             self.prev_best = self.best_fitness
             
             self.update_paths()         # CG-like information
         
-            self.update_covariance(arz) # This is equivalent to a Quasi-Newton
+            self.update_covariance(ary) # This is equivalent to a Quasi-Newton
             self.update_sigma()
             
             # Store Solutions
             self.fs.append(self.best_fitness)
             self.xs.append(self.best_solution)
+            count+=1
+            if count%100==0:
+                print("%5d %5d %8.6e %6.2e %6.2e" %(count,self.fc, self.best_fitness, np.max(self.D), np.min(self.D)))
             
         
     def sample_solve(self):
-        arz = []
+        ary = []
         arx = []
         fitness = []
         if self.hints:
@@ -104,26 +117,27 @@ class CMAES:
             self.create_interpolant()
         else:
             for i in range(self.params.lam):
+                # Is it easier to sample from the covariance matrix
+                # Or do the conversion myself??
                 z = np.random.randn(self.N)
-                x = self.xmean + self.sigma*np.dot(self.B,np.dot(np.diag(self.D),z))
-                arz.append(z)
+                y = np.dot(self.B,np.dot(np.diag(self.D),z))
+                x = self.xmean + self.sigma*y
+                ary.append(y)
                 arx.append(x)
                 fitness.append(self.problem.objective(x))
                 self.fc+=1
             
             arindex = np.argsort(fitness)
-            zmean = np.zeros_like(self.xmean)
-            xmean = np.zeros_like(self.xmean)
+            ymean = np.zeros_like(self.xmean)
             # Updating the mean
             for i in range(self.params.mu):
-                zmean+=self.params.weights[i]*arz[arindex[i]]
-                xmean+=self.params.weights[i]*arx[arindex[i]]
+                ymean+=self.params.weights[i]*ary[arindex[i]]
 
-            self.xmean = xmean
-            self.zmean = zmean
+            self.xmean += self.sigma*ymean
+            self.ymean = ymean
             self.best_fitness = fitness[arindex[0]]
             self.best_solution = arx[arindex[0]]
-            return [arz[arindex[i]] for i in range(self.params.mu)]
+            return [ary[arindex[i]] for i in range(self.params.mu)]
         
 
     def update_paths(self):
@@ -137,15 +151,15 @@ class CMAES:
         ########################
         ps = self.ps
         
-        self.ps = (1-cs)*ps + (np.sqrt(cs*(2-cs)*mueff))*np.dot(self.B,self.zmean)
+        self.ps = (1-cs)*ps + (np.sqrt(cs*(2-cs)*mueff))*np.dot(self.C_invsqrt,self.ymean)
         
         # FIXME: Find the exact definition and the reason why this is the case
         hsig = np.linalg.norm(self.ps) / (np.sqrt(1 - (1-cs)**(2*self.fc/lam)))/chiN < 1.4 + 2/(self.N+1) 
-        pc = (1-cc)*self.pc + hsig * np.sqrt(cc*(2-cc)*mueff) * np.dot(self.B,np.dot(np.diag(self.D),self.zmean))
-        self.pc = pc
+        self.pc *=(1-cc)
+        self.pc += hsig * np.sqrt(cc*(2-cc)*mueff) * self.ymean
         self.hsig = hsig
 
-    def update_covariance(self,arz):
+    def update_covariance(self,ary):
         '''
         C^(k+1) = c1a * C^(k) + c1 * Rk-1 + cmu *Rk-mu
         '''
@@ -155,24 +169,31 @@ class CMAES:
         c1 = params.c1
         cmu = params.cmu
         hsig = self.hsig
+        weights = params.weights
         ########################
         c1a = c1*(1-(1-hsig**2) * cc *(2-cc))    # Modify a few constants 
         
         
-        self.C*=c1a
+        self.C*=(1-c1a-cmu)
         
         # Rank-one update
         self.C += c1*np.outer(self.pc, self.pc)
 
         # Rank-mu update
-        for k in range(params.mu):
-            yk = np.dot(self.B, np.dot(self.B, arz[k]))
-            self.C+=cmu*np.outer(yk,yk)
+        #for k in range(params.mu):
+            #yk = ary[k]
+            #self.C+=cmu*weights[k]*np.outer(yk,yk)
 
-        # TODO: Add a check to make sure C is SPD 
         # Recompute D, B via eigendecomposition
+        # np.linalg.eigh uses lapack _syevd and _heevd 
+        # These are divide and coquer algorithms 
         self.D,self.B = np.linalg.eigh(self.C)
         self.D **= 0.5 
+        # TODO: Add a check to make sure C is SPD 
+        # assert np.all(D) > 0  
+        self.C_invsqrt = np.dot(self.B, np.dot(np.diag(1./self.D), self.B.T))
+
+        
         # FIXME: No stopping criteria based on eigendecomposition count
         self.ec +=1  
 
@@ -184,7 +205,6 @@ class CMAES:
         ########################
         ps_n = np.dot(self.ps,self.ps)
         sigmafactor = min([1, 0.5*cn*(ps_n/N - 1)])
-        print("SF", sigmafactor)
         self.sigma *= np.exp (sigmafactor)
             
     def create_interpolate(self):
@@ -192,14 +212,20 @@ class CMAES:
         pass
 
 
+
+# TODO: Feasible solution
+def is_feasible():
+    pass
+
+
 if __name__ == "__main__":
     # Test the code 
     from test_functions import Rosenbrock
     import matplotlib.pyplot as plt
-    dim = 4
-    problem = Rosenbrock(4)
-    x0 = np.ones(4)*4
-    solver = CMAES(problem,x0,3)
+    dim = 10
+    problem = Rosenbrock(dim)
+    x0 = np.ones(dim)*1
+    solver = CMAES(problem,x0,1)
     solver.optimize()
     print(solver.best_solution)
 
