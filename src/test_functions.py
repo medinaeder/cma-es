@@ -6,6 +6,8 @@ import numpy as np
 class Rosenbrock:
     def __init__(self, dim):
         self.dimension = dim
+    def __call__(self, x):
+        return self.objective(x)
     def objective(self,x):
         f = 0.
         for i in range(self.dimension-1):
