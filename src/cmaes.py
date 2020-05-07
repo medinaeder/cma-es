@@ -14,18 +14,31 @@ class CMAParams:
         self.chiN  = N**0.5 *(1 - 1./(4*N) + 1. / (21 * N **2))
 
         self.mu  = self.lam//2
-        # FIXME:    Does not include negative weights formulation. 
-        #           Do we need it?
-        weights = [np.log(self.mu + 0.5) - np.log(i+1) for i in range(self.mu)]
-        wsum = np.sum(weights)
-        self.weights = 1./wsum * np.array(weights)
-        self.mueff = wsum/np.dot(self.weights,self.weights)
         
-        self.cc = (4 + self.mueff/N) / (N + 4 + 2 * self.mueff/N)       # Time Constant for C cumulation
-        self.cs = (self.mueff + 2 ) / ( N + self.mueff + 5)             # Time Cosntant for Sigma Control
+        # Weights Including the Negative Portion
+        weights = np.array([np.log((self.lam+1)/2.0) - np.log(i+1) for i in range(self.lam)])
+        self.mueff = np.sum(weights[:self.mu])**2/np.sum(weights[:self.mu]**2)
+
+        
         self.c1 = 2 / (( N + 1.3)**2 + self.mueff)                      # Learning rate for rank-one update
         self.cmu = min([1 - self.c1, 2 * (self.mueff - 2 + 1/self.mueff) / ((N + 2)**2 + self.mueff)])  # and for rank-mu update
-        self.damps = 2 * self.mueff/self.lam + 0.3 + self.cs  # damping for sigma, usually close to 1
+        self.cc = (4 + self.mueff/N) / (N + 4 + 2 * self.mueff/N)       # Time Constant for C cumulation
+        self.cs = (self.mueff + 2 ) / ( N + self.mueff + 5)             # Time Cosntant for Sigma Control
+         
+        self.damps = 1 +  2 *np.max([0, np.sqrt((self.mueff-1)/(N+1))-1])+ self.cs  # damping for sigma, usually close to 1
+        
+        mueff_minus = np.sum(weights[self.mu:])**2/np.sum(weights[self.mu:]**2)
+        amu_minus = 1 + self.c1/self.cmu
+        amueff_minus = 1 +  2 *mueff_minus/(self.mueff+2)  
+        apd_minus = (1-self.c1-self.cmu)/(N*self.cmu)
+        
+        scalepos = 1./np.sum(weights[:self.mu])
+        scaleminus = np.amin([amu_minus, amueff_minus, apd_minus])/(-1*np.sum(weights[self.mu:]))
+        
+        self.weights = weights
+        self.weights[:self.mu] = scalepos*self.weights[:self.mu]
+        self.weights[self.mu:] = scaleminus*self.weights[self.mu:]
+        
          
         
 class CMAES:
@@ -137,7 +150,7 @@ class CMAES:
             self.ymean = ymean
             self.best_fitness = fitness[arindex[0]]
             self.best_solution = arx[arindex[0]]
-            return [ary[arindex[i]] for i in range(self.params.mu)]
+            return [ary[arindex[i]] for i in range(self.params.lam)]
         
 
     def update_paths(self):
@@ -180,9 +193,16 @@ class CMAES:
         self.C += c1*np.outer(self.pc, self.pc)
 
         # Rank-mu update
-        #for k in range(params.mu):
-            #yk = ary[k]
-            #self.C+=cmu*weights[k]*np.outer(yk,yk)
+        for k in range(params.lam):
+            yk = ary[k]
+            wk = weights[k]
+            if wk > 0:
+                self.C+=cmu*weights[k]*np.outer(yk,yk)
+            else:
+                yn = np.dot(self.C_invsqrt, yk)
+                wo = wk * self.N/(np.dot(yn,yn))
+                self.C+=cmu*wo*np.outer(yk,yk)
+                
 
         # Recompute D, B via eigendecomposition
         # np.linalg.eigh uses lapack _syevd and _heevd 
@@ -224,7 +244,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     dim = 10
     problem = Rosenbrock(dim)
-    x0 = np.ones(dim)*1
+    x0 = np.ones(dim)*100
     solver = CMAES(problem,x0,1)
     solver.optimize()
     print(solver.best_solution)
