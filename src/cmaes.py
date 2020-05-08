@@ -93,10 +93,14 @@ class CMAES:
         header = "Iter  Fevals   BestObj    MaxStd   MinStd"
         print(header)  
         count = 0
+        
+        # TODO: Add expanded stopping criteria
         while self.fc < self.maxfevals:
             ary = self.sample_solve()
             
             if abs(self.best_fitness - self.prev_best) < self.tol:
+                # FIXME: This is a bad stopping criteria because we are sampling
+                #        We can "easily" sample the same point
                 e = self.xs[-1] - self.best_solution
                 if np.dot(e,e) < self.tol:
                     print(self.best_fitness)
@@ -166,7 +170,6 @@ class CMAES:
         
         self.ps = (1-cs)*ps + (np.sqrt(cs*(2-cs)*mueff))*np.dot(self.C_invsqrt,self.ymean)
         
-        # FIXME: Find the exact definition and the reason why this is the case
         hsig = np.linalg.norm(self.ps) / (np.sqrt(1 - (1-cs)**(2*self.fc/lam)))/chiN < 1.4 + 2/(self.N+1) 
         self.pc *=(1-cc)
         self.pc += hsig * np.sqrt(cc*(2-cc)*mueff) * self.ymean
@@ -207,7 +210,12 @@ class CMAES:
         # Recompute D, B via eigendecomposition
         # np.linalg.eigh uses lapack _syevd and _heevd 
         # These are divide and coquer algorithms 
+    
+        # FIXME: Per the arxiv paper
+        #        B and D need to be only recomputed after
+        #        iteration = np.max([1, np.floor(1/(10*self.N*(c1+cmu)))]) 
         self.D,self.B = np.linalg.eigh(self.C)
+        # self.condition_number = D[0]/D[-1]
         self.D **= 0.5 
         # TODO: Add a check to make sure C is SPD 
         # assert np.all(D) > 0  
@@ -231,9 +239,37 @@ class CMAES:
         # TODO: What do we want to do here. Nearest Neighbors?
         pass
 
+    def stop(self):
+        # Performs the recommended checks
+        # TODO:
+        # NoEffectAxis
+        
+        # NoEffectCoord
+        
+        # ConditionCov > 1e14
+        
+        # EqualFunValues  a counter for how many times we haven't moved 
+        # EqualFunValues > 10 +np.ceil(30*self.N/self.params.lam)
+
+        # Stagnation Median of the most recent 30% is not better than of the first 30%
+
+        # TolXUp far too small initial sigma or divergent behavior
+
+        # Problem Dependent Stoping Criteria
+        
+        # TolFun
+
+        # TolX
+        pass
+        
 
 
 # TODO: Feasible solution
+# Boundary Constraints
+# Paper suggest two possible solutions
+# 1) If the the solution is strictly inside of the domain then resample plus something else
+# 2) Repairing- This seems like a pain in the ass
+# Why not work with a penalty method for return np.inf when outside of the domain 
 def is_feasible():
     pass
 
