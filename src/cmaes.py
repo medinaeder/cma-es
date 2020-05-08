@@ -103,8 +103,8 @@ class CMAES:
                 #        We can "easily" sample the same point
                 e = self.xs[-1] - self.best_solution
                 if np.dot(e,e) < self.tol:
-                    print(self.best_fitness)
-                    print(self.best_solution)
+                    print("Fitness: ", self.best_fitness)
+                    print("Solution: ", self.best_solution)
                     break
                 
             

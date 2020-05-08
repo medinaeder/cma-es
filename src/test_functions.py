@@ -62,3 +62,18 @@ class Easom:
 
 
 # Constrained functions
+
+if __name__=="__main__":
+    from cmaes import CMAES
+    dim = 2
+    tol = 1e-5
+    for p in range(5):
+        print("Dimension: ", dim)
+        problem = Rosenbrock(dim)
+        x0 = np.ones(dim)
+        cm = CMAES(problem, x0,2)
+        cm.optimize()
+        xstar = cm.best_solution
+        e = xstar-problem.answer()
+        assert np.dot(e,e) < tol
+        dim*=2
