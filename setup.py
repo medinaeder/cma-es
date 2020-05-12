@@ -1,12 +1,12 @@
 from setuptools import setup
     
-setup(name = "cma-es",
-      version='0.1',
-      description='A plugin to say hello in several ways',
+setup(name = "cma_es",
+      version='0.0.1',
+      description='Replicate of CMA-ES',
       url='github?',
-      author='Your Name',
-      author_email='your.name@example.com',
+      author='Eder Medina',
+      author_email='e_medina@g.harvard.edu',
       license='MIT',
-      packages=['cma-es'],
+      packages=['cma_es'],
       zip_safe=False)
            
