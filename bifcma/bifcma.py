@@ -65,7 +65,6 @@ class CMAES:
         # Stopping Criteria
         self.fc = 0     # Number of Function Evaluations
         self.ec = 0     # Number of Eigendecompositions
-        
         if maxfevals:
             self.maxfevals = maxfevals
         else:
@@ -119,8 +118,7 @@ class CMAES:
             self.fs.append(self.best_fitness)
             self.xs.append(self.best_solution)
             count+=1
-            if count%100==0:
-                print("%5d %5d %8.6e %6.2e %6.2e" %(count,self.fc, self.best_fitness, np.max(self.D), np.min(self.D)))
+            print("%5d %5d %8.6e %6.2e %6.2e" %(count,self.fc, self.best_fitness, np.max(self.D), np.min(self.D)))
             
         
     def sample_solve(self):
